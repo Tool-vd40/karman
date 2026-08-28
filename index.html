@@ -1,0 +1,1830 @@
+<!doctype html>
+<html lang="ru">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!-- Открывается с иконки без адресной строки Safari. -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Karman">
+<meta name="theme-color" content="#5348c4">
+<title>Karman</title>
+
+<!-- Статическим тегом, а не скриптом: iOS забирает иконку в момент
+     добавления на экран «Домой» и созданный из JS тег видит через раз.
+     Ключа в адресе больше нет, поэтому путь постоянный. -->
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+
+<style>
+  /* Liquid Glass настолько, насколько его вообще можно собрать в вебе:
+     backdrop-filter + полупрозрачные слои + светлая грань сверху.
+     Системный материал недоступен, поэтому важнее не «эффект любой ценой»,
+     а читаемость: под текстом всегда достаточно плотная подложка. */
+  :root {
+    color-scheme: light dark;
+    --bg: #eceaf3;
+    --bg-2: #dfe6f2;
+    --bg-3: #f3e8f0;
+    --text: #101014;
+    /* .75, не .62: на подложке строки .62 давало 3.55:1 при норме 4.5:1
+       для мелкого текста. .75 даёт ~5.0:1 на карточке и ~4.7:1 на фоне. */
+    --dim: rgba(60, 60, 67, .75);
+    --card: rgba(255, 255, 255, .72);
+    --card-solid: rgba(255, 255, 255, .86);
+    --edge: rgba(255, 255, 255, .75);
+    --line: rgba(60, 60, 67, .14);
+    --tap: rgba(83, 72, 196, .12);
+    --accent: #5348c4;
+    --accent-text: #ffffff;
+    --shadow: 0 12px 32px rgba(30, 25, 70, .12);
+    --glass: rgba(255, 255, 255, .62);
+    /* Реальную высоту панели отправки проставляет скрипт. Значение по
+       умолчанию — максимум (поле на 120px + отступы), чтобы даже до
+       первого измерения последняя строка списка не пряталась под ней. */
+    --composer-h: 136px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0b0b10;
+      --bg-2: #14162a;
+      --bg-3: #1d1426;
+      --text: #ffffff;
+      --dim: rgba(235, 235, 245, .62);
+      --card: rgba(70, 70, 84, .38);
+      --card-solid: rgba(44, 44, 54, .82);
+      --edge: rgba(255, 255, 255, .16);
+      --line: rgba(235, 235, 245, .14);
+      --tap: rgba(154, 140, 255, .22);
+      --accent: #9a8cff;
+      --accent-text: #14121f;
+      --shadow: 0 12px 32px rgba(0, 0, 0, .45);
+      --glass: rgba(30, 30, 40, .58);
+    }
+  }
+
+  * { -webkit-tap-highlight-color: transparent; box-sizing: border-box; }
+  /* Скрываем через атрибут hidden: у элементов с собственным display
+     (flex) браузерное правило display:none его не перебивает. */
+  [hidden] { display: none !important; }
+
+  /* -apple-system-body — единственный способ подтянуть системный размер
+     текста (Dynamic Type) в веб на iOS. Дальше всё в rem, поэтому
+     страница растёт и уменьшается вместе с настройкой телефона.
+     Семейство переопределяем после шорткатa, размер он оставляет свой. */
+  html {
+    height: 100%;
+    font: -apple-system-body;
+    font-family: -apple-system, system-ui, "Helvetica Neue", sans-serif;
+  }
+
+  body {
+    margin: 0;
+    min-height: 100%;
+    color: var(--text);
+    font-family: inherit;
+    font-size: 1rem;
+    line-height: 1.4;
+    background:
+      radial-gradient(120% 80% at 8% 0%, var(--bg-2) 0%, transparent 60%),
+      radial-gradient(110% 70% at 96% 12%, var(--bg-3) 0%, transparent 62%),
+      var(--bg);
+    background-attachment: fixed;
+  }
+
+  /* Липкая шапка — один из немногих мест, где backdrop-filter оправдан. */
+  header {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    padding: calc(14px + env(safe-area-inset-top)) calc(20px + env(safe-area-inset-right))
+             12px calc(20px + env(safe-area-inset-left));
+    background: var(--glass);
+    -webkit-backdrop-filter: blur(24px) saturate(180%);
+    backdrop-filter: blur(24px) saturate(180%);
+    border-bottom: .5px solid var(--line);
+  }
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  /* Размер в пикселях намеренно: это иконка, а не текст. Если картинка не
+     пришла — скрипт её убирает, и шапка просто теряет один flex-элемент. */
+  .logo {
+    width: 38px;
+    height: 38px;
+    flex: none;
+    border-radius: 10px;
+    border-top: .5px solid var(--edge);
+    box-shadow: 0 2px 8px rgba(30, 25, 70, .18);
+  }
+  .brand-text { min-width: 0; }
+  h1 {
+    font-size: 1.75rem;
+    font-weight: 700;
+    letter-spacing: -.5px;
+    margin: 0;
+  }
+  .sub {
+    margin: 2px 0 0;
+    font-size: .82rem;
+    color: var(--dim);
+  }
+
+  /* Панель отправки плавающая, поэтому запас снизу считаем честно:
+     её измеренная высота + её собственный отступ от края + безопасная
+     зона + зазор. Иначе последнюю строку нельзя дотапать. */
+  main {
+    padding: 16px calc(16px + env(safe-area-inset-right))
+             calc(var(--composer-h) + 32px + env(safe-area-inset-bottom))
+             calc(16px + env(safe-area-inset-left));
+  }
+
+  .group {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  /* Строки списка НЕ стеклянные: backdrop-filter на каждом элементе
+     длинного списка роняет прокрутку на телефоне. Полупрозрачная
+     заливка без блюра даёт похожий вид и стоит почти ничего. */
+  .row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    min-height: 56px;
+    padding: 12px 14px;
+    border: none;
+    border-top: .5px solid var(--edge);
+    border-radius: 18px;
+    background: var(--card);
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    box-shadow: var(--shadow);
+    transition: transform .16s ease, background .16s ease;
+  }
+  .row:active { transform: scale(.985); background: var(--tap); }
+  .row.copied { background: var(--tap); }
+
+  .body { min-width: 0; flex: 1; }
+
+  .text {
+    margin: 0;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    word-break: break-word;
+  }
+  .name {
+    margin: 0;
+    display: block;
+    font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .meta {
+    margin: 4px 0 0;
+    display: block;
+    font-size: .76rem;
+    color: var(--dim);
+  }
+
+  .thumb {
+    width: 56px;
+    height: 56px;
+    flex: none;
+    border-radius: 12px;
+    object-fit: cover;
+    background: var(--tap);
+  }
+
+  .empty {
+    padding: 56px 24px;
+    text-align: center;
+    color: var(--dim);
+    font-size: .88rem;
+  }
+
+  #notice {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 12px;
+    margin: 0 0 12px;
+    padding: 12px 16px;
+    border-radius: 16px;
+    border-top: .5px solid var(--edge);
+    background: var(--card-solid);
+    color: var(--text);
+    font-size: .88rem;
+  }
+  #notice-text { flex: 1; min-width: 12ch; }
+  #retry {
+    flex: none;
+    min-height: 44px;
+    padding: 0 18px;
+    border: none;
+    border-radius: 22px;
+    background: var(--accent);
+    color: var(--accent-text);
+    font: inherit;
+    font-size: .88rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  #retry:active { opacity: .8; }
+  #retry:disabled { opacity: .5; }
+
+  /* Экран привязки. Панель одна и поверх пустого фона — стекло здесь
+     ничего не стоит, в отличие от строк списка. */
+  #pair {
+    margin: 8px 0 0;
+    padding: 22px 20px calc(22px + env(safe-area-inset-bottom));
+    border-radius: 22px;
+    border-top: .5px solid var(--edge);
+    background: var(--glass);
+    -webkit-backdrop-filter: blur(28px) saturate(180%);
+    backdrop-filter: blur(28px) saturate(180%);
+    box-shadow: var(--shadow);
+  }
+  #pair h2 { margin: 0 0 8px; font-size: 1.25rem; font-weight: 700; }
+  #pair-lead { margin: 0 0 18px; font-size: .9rem; color: var(--dim); }
+  #pair-form { display: flex; flex-wrap: wrap; gap: 10px; }
+  #pair-code {
+    /* min-width: 0 обязателен: у элемента формы своя ширина по умолчанию,
+       и без этого flex откажется его сжимать — поле вылезает за карточку
+       вместо того, чтобы ужаться. */
+    flex: 1 1 12ch;
+    min-width: 0;
+    min-height: 52px;
+    padding: 12px 10px;
+    border: none;
+    border-top: .5px solid var(--edge);
+    border-radius: 16px;
+    background: var(--card-solid);
+    color: var(--text);
+    font: inherit;
+    /* мельче 16px Safari встречает зумом всей страницы */
+    font-size: max(1.5rem, 24px);
+    font-weight: 600;
+    letter-spacing: .22em;
+    /* Разрядка добавляет пробел и после последней цифры, поэтому
+       выровненный по центру текст уезжает влево. Сдвигаем обратно ровно
+       на неё. */
+    text-indent: .22em;
+    text-align: center;
+    -webkit-appearance: none;
+  }
+  #pair-submit {
+    /* На узком экране кнопка уходит под поле целиком, а не сплющивает
+       его до нечитаемого. */
+    flex: 1 1 auto;
+    min-height: 52px;
+    padding: 0 22px;
+    border: none;
+    border-radius: 16px;
+    background: var(--accent);
+    color: var(--accent-text);
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  #pair-submit:active { opacity: .8; }
+  #pair-submit:disabled { opacity: .5; }
+  #pair-error {
+    margin: 14px 0 0;
+    font-size: .88rem;
+    color: var(--text);
+  }
+  #pair-error:empty { display: none; }
+
+  /* Подсказка про постоянный адрес. Намеренно бледная и в конце потока:
+     она полезна, но не про то, ради чего страницу открыли. */
+  #tip {
+    margin: 18px 2px 0;
+    font-size: .8rem;
+    line-height: 1.45;
+    color: var(--dim);
+  }
+
+  /* Плавающая панель отправки. Стекло здесь уместно: она одна и поверх. */
+  #composer {
+    position: fixed;
+    left: calc(12px + env(safe-area-inset-left));
+    right: calc(12px + env(safe-area-inset-right));
+    bottom: calc(12px + env(safe-area-inset-bottom));
+    z-index: 30;
+    display: flex;
+    align-items: flex-end;
+    gap: 6px;
+    padding: 8px;
+    border-radius: 26px;
+    border-top: .5px solid var(--edge);
+    background: var(--glass);
+    -webkit-backdrop-filter: blur(28px) saturate(180%);
+    backdrop-filter: blur(28px) saturate(180%);
+    box-shadow: var(--shadow);
+  }
+  #send-text {
+    flex: 1;
+    min-width: 0;
+    min-height: 44px;
+    max-height: 120px;
+    padding: 11px 14px;
+    border: none;
+    border-radius: 18px;
+    background: var(--card-solid);
+    color: var(--text);
+    font: inherit;
+    /* меньше 16px — Safari зумит страницу при фокусе, поэтому нижняя
+       граница жёсткая даже при мелком системном размере текста */
+    font-size: max(1rem, 16px);
+    resize: none;
+    -webkit-appearance: none;
+  }
+  #send-text::placeholder { color: var(--dim); }
+
+  .icon-btn {
+    width: 44px;
+    height: 44px;
+    flex: none;
+    border: none;
+    border-top: .5px solid var(--edge);
+    border-radius: 22px;
+    background: var(--card-solid);
+    color: var(--text);
+    font-size: 20px;
+    line-height: 1;
+    cursor: pointer;
+  }
+  .icon-btn:active { background: var(--tap); }
+  .icon-btn:disabled { opacity: .45; }
+  #send-btn { background: var(--accent); color: var(--accent-text); font-weight: 600; }
+  /* Не display:none — со скрытого элемента Safari не всегда открывает
+     системный выбор файла по программному click(). */
+  #pick { position: fixed; left: 0; top: 0; width: 1px; height: 1px; opacity: 0; }
+
+  #toast {
+    position: fixed;
+    left: 50%;
+    /* от той же величины, что и запас снизу: иначе при развёрнутой
+       панели тост оказывается за ней */
+    bottom: calc(var(--composer-h) + 24px + env(safe-area-inset-bottom));
+    z-index: 40;
+    max-width: 80vw;
+    transform: translate(-50%, 12px);
+    background: var(--accent);
+    color: var(--accent-text);
+    font-size: .88rem;
+    font-weight: 600;
+    padding: 11px 22px;
+    border-radius: 22px;
+    box-shadow: var(--shadow);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .18s ease, transform .18s ease;
+  }
+  #toast.on { opacity: 1; transform: translate(-50%, 0); }
+
+  /* Полноэкранный просмотр картинки. Копировать картинку из веба нельзя
+     (ClipboardItem требует https), поэтому единственный рабочий путь —
+     системное меню Safari по долгому нажатию. Об этом и подсказка. */
+  #viewer {
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    padding: calc(20px + env(safe-area-inset-top)) 20px
+             calc(20px + env(safe-area-inset-bottom));
+    background: rgba(0, 0, 0, .55);
+    -webkit-backdrop-filter: blur(30px) saturate(160%);
+    backdrop-filter: blur(30px) saturate(160%);
+    opacity: 0;
+    transition: opacity .2s ease;
+  }
+  #viewer.on { display: flex; opacity: 1; }
+  #viewer-img {
+    max-width: 100%;
+    max-height: 70vh;
+    border-radius: 18px;
+    box-shadow: 0 20px 50px rgba(0, 0, 0, .5);
+    will-change: transform;
+  }
+  #viewer-hint {
+    margin: 0;
+    max-width: 420px;
+    text-align: center;
+    font-size: .88rem;
+    color: rgba(255, 255, 255, .92);
+    text-shadow: 0 1px 3px rgba(0, 0, 0, .5);
+  }
+  #build {
+    margin: 14px 0 0;
+    text-align: center;
+    font-size: .72rem;
+    opacity: .35;
+  }
+  .sc-head {
+    margin: 18px 0 6px;
+    font-weight: 600;
+  }
+  #viewer-copy {
+    min-width: 44px;
+    min-height: 44px;
+    padding: 0 22px;
+    border: none;
+    border-top: .5px solid rgba(255, 255, 255, .4);
+    border-radius: 22px;
+    background: rgba(255, 255, 255, .22);
+    color: #fff;
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  #viewer-close {
+    position: absolute;
+    top: calc(14px + env(safe-area-inset-top));
+    right: 16px;
+    min-width: 44px;
+    min-height: 44px;
+    padding: 0 16px;
+    border: none;
+    border-top: .5px solid rgba(255, 255, 255, .4);
+    border-radius: 22px;
+    background: rgba(255, 255, 255, .22);
+    color: #fff;
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  /* Раздел про «Команды». Свёрнут по умолчанию: он объясняет
+     необязательное, а страница нужна ради списка. <details> — родной
+     механизм, без своего скрипта и состояния. Стекла здесь нет: раздел
+     живёт в потоке списка, а backdrop-filter в прокрутке дорог. */
+  #shortcut {
+    margin-top: 18px;
+    border-radius: 18px;
+    border-top: .5px solid var(--edge);
+    background: var(--card);
+    box-shadow: var(--shadow);
+  }
+  #shortcut summary {
+    display: flex;
+    align-items: center;
+    min-height: 44px;
+    padding: 10px 14px;
+    font-size: .88rem;
+    font-weight: 500;
+    color: var(--dim);
+    cursor: pointer;
+    list-style: none;
+  }
+  #shortcut summary::-webkit-details-marker { display: none; }
+  #shortcut summary::after {
+    content: '\2304';
+    margin-left: auto;
+    padding-left: 12px;
+    line-height: 1;
+    transition: transform .2s ease;
+  }
+  #shortcut[open] summary::after { transform: rotate(180deg); }
+  .sc-body {
+    padding: 0 14px 14px;
+    font-size: .84rem;
+    color: var(--dim);
+  }
+  .sc-body p { margin: 0 0 10px; }
+  .sc-body ol { margin: 0 0 12px; padding-left: 1.4em; }
+  .sc-body li { margin: 0 0 5px; }
+  #shortcut-nokey:empty { display: none; }
+  #shortcut-copy {
+    display: block;
+    width: 100%;
+    min-height: 44px;
+    margin: 0 0 12px;
+    padding: 11px 14px;
+    border: none;
+    border-radius: 14px;
+    background: var(--accent);
+    color: var(--accent-text);
+    font: inherit;
+    font-size: .88rem;
+    font-weight: 500;
+    text-align: center;
+    cursor: pointer;
+  }
+  #shortcut-copy:active { opacity: .8; }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; animation: none !important; }
+    .row:active { transform: none; }
+  }
+
+  /* Поле для запасного способа копирования. Убрано с глаз, но не
+     display:none — со скрытого нельзя снять выделение. Размер 1×1 в углу,
+     а не -9999px: далёкое фиксированное поле некоторые версии Safari
+     пытаются проскроллить в видимую область. font-size обязателен —
+     редактируемое поле мельче 16px Safari встречает зумом страницы. */
+  #shadow {
+    position: fixed;
+    left: 0;
+    top: 0;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    border: none;
+    opacity: 0;
+    font-size: max(1rem, 16px);
+  }
+</style>
+
+<header>
+  <div class="brand">
+    <img class="logo" id="logo" alt="">
+    <div class="brand-text">
+      <h1>Karman</h1>
+      <p class="sub" id="subtitle"></p>
+    </div>
+  </div>
+</header>
+
+<main>
+  <div id="notice" hidden>
+    <span id="notice-text"></span>
+    <button id="retry" type="button" hidden></button>
+  </div>
+
+  <!-- Экран привязки. Форма настоящая: Enter на клавиатуре телефона
+       отправляет её сам, своего обработчика клавиш не нужно. -->
+  <section id="pair" hidden>
+    <h2 id="pair-title"></h2>
+    <p id="pair-lead"></p>
+    <form id="pair-form">
+      <input id="pair-code" type="text" inputmode="numeric" pattern="[0-9]*"
+             autocomplete="one-time-code" maxlength="6" enterkeyhint="go"
+             aria-labelledby="pair-title">
+      <button id="pair-submit" type="submit"></button>
+    </form>
+    <p id="pair-error" role="alert"></p>
+  </section>
+
+  <div class="group" id="list"></div>
+
+  <details id="shortcut">
+    <summary id="shortcut-title"></summary>
+    <div class="sc-body">
+      <p id="shortcut-lead"></p>
+      <button id="shortcut-copy" type="button"></button>
+      <ol id="shortcut-steps"></ol>
+      <p class="sc-head" id="shortcut-pick-title"></p>
+      <ol id="shortcut-pick-steps"></ol>
+      <p class="sc-head" id="shortcut-send-title"></p>
+      <p id="shortcut-send-lead"></p>
+      <ol id="shortcut-send-steps"></ol>
+      <p id="shortcut-note"></p>
+      <p id="shortcut-limit"></p>
+      <p id="shortcut-offline"></p>
+      <p id="shortcut-nokey"></p>
+    </div>
+  </details>
+
+  <p id="tip" hidden></p>
+  <p id="build"></p>
+</main>
+
+<div id="composer">
+  <button class="icon-btn" id="pick-btn" type="button" aria-label="">&#xFF0B;</button>
+  <button class="icon-btn" id="grab-btn" type="button" aria-label="" hidden>&#x2193;</button>
+  <textarea id="send-text" rows="1" aria-label=""></textarea>
+  <button class="icon-btn" id="send-btn" type="button" aria-label="">&#x2191;</button>
+</div>
+<input type="file" id="pick" accept="image/*">
+
+<div id="viewer" role="dialog" aria-modal="true">
+  <button id="viewer-close" type="button"></button>
+  <img id="viewer-img" alt="">
+  <button id="viewer-copy" type="button" hidden></button>
+  <p id="viewer-hint"></p>
+</div>
+
+<div id="toast"></div>
+<textarea id="shadow" readonly aria-hidden="true"></textarea>
+
+<script>
+(function () {
+  'use strict'
+
+  var ru = navigator.language && navigator.language.indexOf('ru') === 0
+  var t = {
+    subtitle:  ru ? 'Скопированное на компьютере'   : 'Copied on your Mac',
+    empty:     ru ? 'Пока пусто. Скопируйте что-нибудь на компьютере.'
+                  : 'Nothing yet. Copy something on your Mac.',
+    copied:    ru ? 'Скопировано'                   : 'Copied',
+    failed:    ru ? 'Не удалось скопировать'        : 'Couldn’t copy',
+    cached:    ru ? 'Компьютер недоступен — показано из памяти телефона.'
+                  : 'Your Mac is unavailable — showing what this phone remembers.',
+    queued:    ru ? 'Компьютер недоступен. Отправлю, когда он появится.'
+                  : 'Your Mac is unavailable. This will be sent when it comes back.',
+    queueWait: ru ? 'Ждут отправки: '                : 'Waiting to send: ',
+    queueSent: ru ? 'Накопленное отправлено'         : 'Everything queued was sent',
+    copyImage: ru ? 'Копировать'                     : 'Copy',
+    grab:      ru ? 'Взять из буфера телефона'      : 'Take from this phone’s clipboard',
+    noMac:     ru ? 'Компьютер ещё не знаком этому телефону. Откройте настройки Karman на компьютере, вкладка «Телефон», и отсканируйте QR-код.'
+                  : 'This phone does not know your Mac yet. Open Karman settings on the Mac, the Phone tab, and scan the QR code.',
+    grabbed:   ru ? 'Записано'                      : 'Saved',
+    grabEmpty: ru ? 'В буфере телефона пусто'       : 'This phone’s clipboard is empty',
+    grabFail:  ru ? 'Не удалось прочитать буфер'    : 'Couldn’t read the clipboard',
+    imgCopied: ru ? 'Картинка скопирована'           : 'Image copied',
+    imgFailed: ru ? 'Не удалось скопировать картинку' : 'Couldn’t copy the image',
+    offline:   ru ? 'Нет связи с компьютером. Проверьте, включён ли он и та же ли сеть Wi-Fi.'
+                  : 'No connection to your Mac. Check that it is awake and on the same Wi-Fi.',
+    serverErr: ru ? 'Компьютер ответил ошибкой. Попробуйте перезапустить Karman на нём.'
+                  : 'Your Mac returned an error. Try restarting Karman there.',
+    unpaired:  ru ? 'Телефон отвязан. Отсканируйте QR-код в настройках Karman заново.'
+                  : 'This phone was unlinked. Scan the QR code in Karman settings again.',
+    retry:     ru ? 'Повторить'                     : 'Retry',
+    retrying:  ru ? 'Проверяю…'                     : 'Checking…',
+    now:       ru ? 'только что'                    : 'just now',
+    minutes:   ru ? ' мин назад'                    : 'm ago',
+    hours:     ru ? ' ч назад'                      : 'h ago',
+    days:      ru ? ' дн назад'                     : 'd ago',
+    image:     ru ? 'Картинка'                      : 'Image',
+    hint:      ru ? 'Нажмите на картинку и держите — Safari предложит «Скопировать» или «Сохранить в Фото».'
+                  : 'Touch and hold the image — Safari will offer “Copy” or “Add to Photos”.',
+    close:     ru ? 'Готово'                        : 'Done',
+    // Коротко не от лени: кнопок в строке стало три, и длинная подсказка
+    // в неё не влезала. Куда именно отправится — сказано заголовком
+    // страницы и стрелкой на кнопке.
+    placeholder: ru ? 'Отправить'                   : 'Send',
+    sendLabel: ru ? 'Отправить'                     : 'Send',
+    pickLabel: ru ? 'Выбрать картинку'              : 'Choose an image',
+    sending:   ru ? 'Отправляется…'                 : 'Sending…',
+    sent:      ru ? 'Отправлено'                    : 'Sent',
+    sendFail:  ru ? 'Не удалось отправить'          : 'Couldn’t send',
+    tooLarge:  ru ? 'Слишком большой файл'          : 'File is too large',
+    badImage:  ru ? 'Не удалось прочитать картинку' : 'Couldn’t read the image',
+    gone:      ru ? 'Этого больше нет в истории'    : 'That item is gone from the history',
+    fallbackName: ru ? 'картинка'                   : 'image',
+
+    pairTitle: ru ? 'Привязать телефон'             : 'Link this phone',
+    pairLead:  ru ? 'Откройте настройки Karman на компьютере, вкладка «Телефон», и введите показанный там шестизначный код. Это нужно один раз: дальше телефон запомнят, и иконку на экране «Домой» больше пересоздавать не придётся.'
+                  : 'Open Karman settings on your Mac, the Phone tab, and enter the six-digit code shown there. It is a one-time step: after that this phone is remembered, and you never have to re-create the Home Screen icon.',
+    pairSubmit: ru ? 'Привязать'                    : 'Link',
+    pairChecking: ru ? 'Проверяю…'                  : 'Checking…',
+    pairShort: ru ? 'Нужно шесть цифр.'             : 'Enter six digits.',
+    // Про одноразовость сказано прямо: код меняется после каждой удачной
+    // привязки, и человек, добавляющий второе устройство, вводит старый и
+    // не понимает, почему «тот же самый код не подходит».
+    pairBad:   ru ? 'Код не подошёл. Он одноразовый и меняется после каждой привязки — посмотрите текущий в настройках Karman на компьютере.'
+                  : 'That code didn’t work. Each code works once and changes after every pairing — check the current one in Karman settings on your Mac.',
+    pairLeft:  ru ? ' Осталось попыток: '           : ' Attempts left: ',
+    pairBurned: ru ? 'Код сгорел из-за неудачных попыток. Возьмите новый в настройках Karman на компьютере, вкладка «Телефон».'
+                   : 'The code is used up after too many tries. Get a fresh one in Karman settings on your Mac, the Phone tab.',
+    pairOffline: ru ? 'Компьютер не ответил. Проверьте, включён ли он и та же ли сеть Wi-Fi.'
+                    : 'Your Mac didn’t answer. Check that it is awake and on the same Wi-Fi.',
+    pairFail:  ru ? 'Не удалось привязать. Попробуйте ещё раз.'
+                  : 'Couldn’t link this phone. Try again.',
+    paired:    ru ? 'Телефон привязан'              : 'Phone linked',
+
+    tip:       ru ? 'Чтобы иконка на экране «Домой» не сломалась при смене адреса компьютера или сети, откройте Karman по имени компьютера — адрес вида http://имя.local:порт/ показан в настройках Karman на компьютере, вкладка «Телефон» — и на экран «Домой» добавьте уже его. Это другой адрес, поэтому там один раз попросят код привязки заново: это нормально, ничего не сломалось.'
+                  : 'So the Home Screen icon keeps working when your Mac’s address or network changes, open Karman by computer name instead — an address like http://name.local:port/, shown in Karman settings on your Mac, the Phone tab — and add that one to the Home Screen. It is a different address, so it will ask for the linking code once more: that is expected, nothing is broken.',
+
+    scTitle: ru ? 'Копировать без Safari — через «Команды»'
+                : 'Copy without Safari — using Shortcuts',
+    scLead:  ru ? 'Приложение «Команды» умеет ходить по сети само. Команда возьмёт последнее скопированное на компьютере и положит в буфер телефона. Её можно повесить виджетом на экран «Домой», в Пункт управления, на кнопку действия или на двойное касание задней крышки.'
+                : 'The Shortcuts app can reach your Mac on its own. A shortcut grabs the latest thing you copied there and puts it on your phone’s clipboard. Put it in a Home Screen widget, Control Center, the Action button, or a back tap.',
+    scCopy:  ru ? 'Скопировать адрес для команды'
+                : 'Copy the address for the shortcut',
+    scSteps: ru ? ['Открыть «Команды», нажать плюс.',
+                   'Добавить действие «Получить содержимое URL» и вставить скопированный адрес.',
+                   'Добавить «Получить значение словаря», ключ — items.',
+                   'Добавить «Получить элемент из списка», первый элемент.',
+                   'Добавить «Получить значение словаря», ключ — text.',
+                   'Добавить «Скопировать в буфер обмена».',
+                   'Назвать команду, выбрать значок и добавить куда удобно.']
+                : ['Open Shortcuts and tap the plus button.',
+                   'Add “Get Contents of URL” and paste the address you copied.',
+                   'Add “Get Dictionary Value”, key: items.',
+                   'Add “Get Item from List”, first item.',
+                   'Add “Get Dictionary Value”, key: text.',
+                   'Add “Copy to Clipboard”.',
+                   'Name it, pick an icon, and add it wherever you like.'],
+    scPickTitle: ru ? 'Вариант с выбором из списка'
+                    : 'A version that lets you pick from a list',
+    scPickSteps: ru ? ['Сделать всё то же самое, но вместо «Получить элемент из списка» добавить «Повторить с каждым» по items.',
+                       'Внутри повтора — «Получить значение словаря», ключ text, и «Добавить в переменную» с именем строки.',
+                       'После повтора — «Выбрать из меню», источник — переменная строки.',
+                       'В конце — «Скопировать в буфер обмена».',
+                       'Повесить на двойное касание задней крышки: Настройки → Универсальный доступ → Касание → Касание задней панели.']
+                    : ['Do everything the same, but instead of “Get Item from List” add “Repeat with Each” over items.',
+                       'Inside the loop add “Get Dictionary Value”, key text, and “Add to Variable” named lines.',
+                       'After the loop add “Choose from List”, source: the lines variable.',
+                       'Finish with “Copy to Clipboard”.',
+                       'Assign it to a double tap on the back: Settings → Accessibility → Touch → Back Tap.'],
+    scSendTitle: ru ? 'Обратно: скопированное на телефоне — на компьютер'
+                    : 'The other way: send this phone’s clipboard to the Mac',
+    scSendLead: ru ? 'Отдельная команда, которая ничего не открывает: берёт то, что вы только что скопировали на телефоне, и отправляет на компьютер. Оттуда оно попадает и сюда, в этот список.'
+                   : 'A separate shortcut that opens nothing: it takes what you just copied on the phone and sends it to the Mac. From there it shows up here, in this list.',
+    scSendSteps: ru ? ['Новая команда, действие «Получить из буфера обмена».',
+                       'Добавить «Получить содержимое URL», адрес тот же, но вместо items в конце — add.',
+                       'Метод — POST, тело — «Файл», в поле подставить буфер обмена.',
+                       'Заголовок Content-Type со значением text/plain; charset=utf-8.',
+                       'Повесить на другое касание задней крышки — тройное.']
+                    : ['New shortcut, action “Get Clipboard”.',
+                       'Add “Get Contents of URL”, same address but ending in add instead of items.',
+                       'Method: POST, request body: File, and put the clipboard in the field.',
+                       'Add a Content-Type header with the value text/plain; charset=utf-8.',
+                       'Assign it to a different Back Tap — the triple one.'],
+    scOffline: ru ? 'Обе команды ходят к компьютеру напрямую, поэтому работают, только пока он в сети. Когда его нет, остаётся эта страница: она открывается и с выключенным компьютером, показывает накопленное и умеет забрать буфер телефона кнопкой со стрелкой вниз.'
+                  : 'Both shortcuts talk to the Mac directly, so they work only while it is on the network. When it is not, this page still does: it opens with the Mac off, shows what it remembers, and can take this phone’s clipboard with the down-arrow button.',
+    scNote:  ru ? 'При первом запуске iOS попросит разрешение на доступ к локальной сети — без него команда не достучится до компьютера.'
+                : 'The first time it runs, iOS asks for local network access — without it the shortcut can’t reach your Mac.',
+    scLimit: ru ? 'Так копируется только последнее скопированное, без выбора, и только текст: если последним был скриншот, команда ничего не положит в буфер. Ниже — вариант с выбором из списка.'
+                : 'This copies the latest item only, with no picking, and text only: if the latest item was a screenshot, the shortcut copies nothing. Below is a version that lets you pick from a list.',
+    scNoKey: ru ? '«Команды» ходят мимо браузера и привязкой телефона не пользуются — им нужен адрес с ключом. Он показан в настройках Karman на компьютере, вкладка «Телефон».'
+                : 'Shortcuts goes around the browser and doesn’t use this phone’s link — it needs the address with the key in it, shown in Karman settings on your Mac, the Phone tab.'
+  }
+
+  document.documentElement.lang = ru ? 'ru' : 'en'
+
+  // Ключ в адресе — старый способ. Он остаётся ради уже добавленных иконок
+  // и «Команд»; когда его нет, авторизует cookie, которую ставит /pair.
+  // Cookie браузер шлёт сам: fetch на свой же origin ходит с ними по
+  // умолчанию, отдельного credentials не нужно.
+  var key = new URLSearchParams(location.search).get('k') || ''
+
+  // --- Где мы живём ------------------------------------------------------
+  //
+  // Страница бывает в двух местах, и это два разных мира.
+  //
+  // Первый: её отдал сам компьютер. Тогда всё как раньше — запросы к
+  // своему же адресу, привязка держится на cookie.
+  //
+  // Второй: она лежит по постоянному адресу, отдельно от компьютера. Это
+  // и есть то, ради чего затевалось: адрес не меняется при переезде в
+  // другую сеть, значит иконка на телефоне и его память живут вечно. Но
+  // для браузера компьютер тогда — чужой сайт: cookie туда не поедет, и
+  // привязку держит токен, который страница хранит у себя и шлёт
+  // заголовком.
+  //
+  // Отличаем по имени: компьютер отдаёт страницу либо по имени «.local»,
+  // либо по адресу цифрами, либо по имени из семейства сертификата.
+  var selfServed = /(^|\.)my\.local-ip\.co$/.test(location.hostname) ||
+                   /\.local$/.test(location.hostname) ||
+                   /^\d{1,3}(\.\d{1,3}){3}$/.test(location.hostname) ||
+                   location.hostname === 'localhost'
+
+  var HOSTS_KEY = 'karman.hosts'
+  var TOKEN_KEY = 'karman.token'
+  var SECURE_PORT = 49732
+
+  // Пустая строка — стучимся к себе же. Иначе полный адрес компьютера.
+  var base = ''
+  var token = ''
+
+  function url(path) {
+    return base + (key ? path + '?k=' + encodeURIComponent(key) : path)
+  }
+
+  // Адрес компьютера собирается из цифр: сертификат выдан на имена вида
+  // 192-168-1-126.my.local-ip.co, и к другому имени он не подойдёт.
+  function originFor(ip, port) {
+    var parts = String(ip).trim().split('.')
+    var fine = parts.length === 4 && parts.every(function (p) {
+      return /^\d{1,3}$/.test(p) && +p < 256
+    })
+    if (!fine) return null
+    var number = parseInt(port, 10)
+    if (!(number > 0 && number < 65536)) number = SECURE_PORT
+    return 'https://' + parts.join('-') + '.my.local-ip.co:' + number
+  }
+
+  // Помним все адреса, где компьютер когда-либо отвечал: дом, работа, что
+  // там ещё. При открытии стучимся во все разом, и смена сети проходит
+  // незаметно. Свежий — первым: чаще всего он же и ответит.
+  function knownHosts() { return readStore(HOSTS_KEY) }
+
+  function rememberHost(origin) {
+    var hosts = knownHosts().filter(function (h) { return h !== origin })
+    hosts.unshift(origin)
+    writeStore(HOSTS_KEY, hosts.slice(0, 8))
+  }
+
+  // Память самой страницы. Ради неё всё и затевалось: при выключенном
+  // компьютере показывать больше нечего, а показать надо. Лежит в
+  // localStorage, потому что переживать перезапуск обязана, а размеры тут
+  // копеечные — заголовки списка, не картинки.
+  var CACHE_KEY = 'karman.items'
+  var QUEUE_KEY = 'karman.queue'
+  var CACHE_MAX = 120        // столько строк храним
+  var CACHE_TEXT_MAX = 20000 // и столько знаков в каждой
+  var QUEUE_MAX = 50
+
+  var BUILD = 'сборка 28.08 15:02'
+
+  var MAX_UPLOAD = 25 * 1024 * 1024   // потолок сервера
+  var MAX_CANVAS_SIDE = 4096          // iOS роняет canvas примерно после 16.7 Мп
+  var POLL_TIMEOUT = 5000
+  var SEND_TIMEOUT = 30000
+  var PAIR_TIMEOUT = 10000
+
+  var header = document.querySelector('header')
+  var mainEl = document.querySelector('main')
+  var list = document.getElementById('list')
+  var notice = document.getElementById('notice')
+  var noticeText = document.getElementById('notice-text')
+  var retryBtn = document.getElementById('retry')
+  var pairBox = document.getElementById('pair')
+  var pairForm = document.getElementById('pair-form')
+  var pairCode = document.getElementById('pair-code')
+  var pairSubmit = document.getElementById('pair-submit')
+  var pairError = document.getElementById('pair-error')
+  var shortcutBox = document.getElementById('shortcut')
+  var toast = document.getElementById('toast')
+  var shadow = document.getElementById('shadow')
+  var input = document.getElementById('send-text')
+  var sendBtn = document.getElementById('send-btn')
+  var pick = document.getElementById('pick')
+  var pickBtn = document.getElementById('pick-btn')
+  var grabBtn = document.getElementById('grab-btn')
+  var composer = document.getElementById('composer')
+  var viewer = document.getElementById('viewer')
+  var viewerImg = document.getElementById('viewer-img')
+  var viewerClose = document.getElementById('viewer-close')
+  var viewerCopy = document.getElementById('viewer-copy')
+  var logo = document.getElementById('logo')
+
+  document.getElementById('subtitle').textContent = t.subtitle
+  document.getElementById('viewer-hint').textContent = t.hint
+  viewerClose.textContent = t.close
+  input.placeholder = t.placeholder
+  input.setAttribute('aria-label', t.placeholder)
+  sendBtn.setAttribute('aria-label', t.sendLabel)
+  pickBtn.setAttribute('aria-label', t.pickLabel)
+  grabBtn.setAttribute('aria-label', t.grab)
+
+  // Логотип: если сервер его не отдал — просто убираем, шапка остаётся целой.
+  logo.addEventListener('error', function () { logo.remove() })
+  logo.src = url('/icon.png')
+
+  // Раздел про «Команды». Адрес отдаём целиком, с хостом и портом: его
+  // вставляют в действие «Получить содержимое URL», и переписывать руками
+  // строку с ключом никто не станет. Копируем той же copy() — способ она
+  // выбирает до первого await, иначе Safari теряет привязку к жесту.
+  var shortcutURL = location.origin + url('/items')
+  document.getElementById('shortcut-title').textContent = t.scTitle
+  document.getElementById('shortcut-lead').textContent = t.scLead
+  document.getElementById('shortcut-note').textContent = t.scNote
+  document.getElementById('shortcut-limit').textContent = t.scLimit
+  document.getElementById('shortcut-offline').textContent = t.scOffline
+
+  // Метка сборки. Нужна не для красоты: страница обновляется сама, и без
+  // неё нельзя отличить «не работает» от «работает старая версия». Внизу
+  // и бледная — на глаза не лезет, но всегда под рукой.
+  document.getElementById('build').textContent = BUILD
+  function fillSteps(id, steps) {
+    var list = document.getElementById(id)
+    steps.forEach(function (step) {
+      var li = document.createElement('li')
+      li.textContent = step
+      list.appendChild(li)
+    })
+  }
+  fillSteps('shortcut-steps', t.scSteps)
+  fillSteps('shortcut-pick-steps', t.scPickSteps)
+  fillSteps('shortcut-send-steps', t.scSendSteps)
+  document.getElementById('shortcut-pick-title').textContent = t.scPickTitle
+  document.getElementById('shortcut-send-title').textContent = t.scSendTitle
+  document.getElementById('shortcut-send-lead').textContent = t.scSendLead
+  var shortcutCopy = document.getElementById('shortcut-copy')
+  shortcutCopy.textContent = t.scCopy
+  shortcutCopy.addEventListener('click', function () { copy(shortcutURL) })
+  // Без ключа в адресе копировать нечего: cookie этой страницы «Командам»
+  // недоступна, и такой адрес ответил бы им 401.
+  if (!key) {
+    shortcutCopy.hidden = true
+    document.getElementById('shortcut-nokey').textContent = t.scNoKey
+  }
+
+  // Высота панели отправки уезжает в CSS-переменную: от неё считается и
+  // запас снизу у списка, и позиция тоста.
+  function measureComposer() {
+    document.documentElement.style
+      .setProperty('--composer-h', composer.offsetHeight + 'px')
+  }
+
+  function withTimeout(path, options, ms) {
+    var ctrl = new AbortController()
+    var timer = setTimeout(function () { ctrl.abort() }, ms)
+    options = options || {}
+    options.signal = ctrl.signal
+    // Токен подставляем здесь, в единственном месте, через которое ходят
+    // все запросы. Забытый заголовок в одной ветке означал бы страницу,
+    // которая работает через раз.
+    if (token) {
+      options.headers = options.headers || {}
+      options.headers['X-Karman-Token'] = token
+    }
+    function stop(x) { clearTimeout(timer); return x }
+    return fetch(path, options)
+      .then(stop, function (e) { stop(); throw e })
+  }
+
+  // Записывать в буфер приходится старым способом: соединение локальное,
+  // без сертификата, а современный Clipboard API Safari отдаёт только по
+  // https. Проверяем заранее, а не по факту отказа — после await
+  // браузер уже не считает происходящее реакцией на палец и запретит оба.
+  var modern = window.isSecureContext &&
+               !!(navigator.clipboard && navigator.clipboard.writeText)
+
+  function copy(text) {
+    if (modern) {
+      // В ветке отказа копировать уже нечем: привязка к жесту потеряна,
+      // execCommand откажет тоже. Честнее показать неудачу.
+      navigator.clipboard.writeText(text).then(
+        function () { flash(t.copied) },
+        function () { flash(t.failed) }
+      )
+      return
+    }
+    shadow.value = text
+    shadow.removeAttribute('readonly')
+    shadow.focus()
+    shadow.setSelectionRange(0, text.length)
+    var ok = false
+    try { ok = document.execCommand('copy') } catch (e) { ok = false }
+    shadow.setAttribute('readonly', '')
+    shadow.blur()
+    flash(ok ? t.copied : t.failed)
+  }
+
+  // Единственное место, где меняется полоса уведомления: кнопка повтора
+  // нужна только там, где повтор что-то решает — связь и ошибка сервера.
+  function setNotice(message, withRetry) {
+    noticeText.textContent = message || ''
+    notice.hidden = !message
+    retryBtn.hidden = !message || !withRetry
+  }
+
+  retryBtn.textContent = t.retry
+  retryBtn.addEventListener('click', function () {
+    retryBtn.disabled = true
+    retryBtn.textContent = t.retrying
+    poll().then(function () {
+      retryBtn.disabled = false
+      retryBtn.textContent = t.retry
+    })
+  })
+
+  var toastTimer = null
+  function flash(message, sticky) {
+    toast.textContent = message
+    toast.classList.add('on')
+    clearTimeout(toastTimer)
+    if (!sticky) {
+      toastTimer = setTimeout(function () { toast.classList.remove('on') }, 1400)
+    }
+  }
+
+  function ago(seconds) {
+    var diff = Math.max(0, Date.now() / 1000 - seconds)
+    if (diff < 60) return t.now
+    if (diff < 3600) return Math.floor(diff / 60) + t.minutes
+    if (diff < 86400) return Math.floor(diff / 3600) + t.hours
+    return Math.floor(diff / 86400) + t.days
+  }
+
+  function size(bytes) {
+    if (!(bytes > 0)) return ''
+    if (bytes < 1024) return bytes + ' B'
+    if (bytes < 1024 * 1024) return Math.round(bytes / 1024) + ' KB'
+    return (bytes / 1048576).toFixed(1) + ' MB'
+  }
+
+  // --- Привязка ----------------------------------------------------------
+  // Показывается и на старте (cookie нет), и посреди работы, если сервер
+  // вдруг ответил 401: телефон могли отвязать с компьютера.
+  document.getElementById('pair-title').textContent = t.pairTitle
+  document.getElementById('pair-lead').textContent = t.pairLead
+  pairSubmit.textContent = t.pairSubmit
+
+  var pairing = false
+
+  function showPair() {
+    if (!pairBox.hidden) return
+    setNotice('')
+    pairBox.hidden = false
+    list.hidden = true
+    shortcutBox.hidden = true
+    composer.hidden = true
+    measureComposer()
+    pairCode.focus()
+  }
+
+  function hidePair() {
+    if (pairBox.hidden) return
+    pairBox.hidden = true
+    pairError.textContent = ''
+    pairCode.value = ''
+    list.hidden = false
+    shortcutBox.hidden = false
+    composer.hidden = false
+    measureComposer()
+  }
+
+  // Только цифры, что бы ни принесла клавиатура или вставка.
+  pairCode.addEventListener('input', function () {
+    var digits = pairCode.value.replace(/\D/g, '').slice(0, 6)
+    if (digits !== pairCode.value) pairCode.value = digits
+  })
+
+  pairForm.addEventListener('submit', function (e) {
+    e.preventDefault()
+    if (pairing) return
+    var code = pairCode.value.replace(/\D/g, '')
+    if (code.length !== 6) { pairError.textContent = t.pairShort; return }
+
+    pairing = true
+    pairSubmit.disabled = true
+    pairSubmit.textContent = t.pairChecking
+    pairError.textContent = ''
+
+    function done() {
+      pairing = false
+      pairSubmit.disabled = false
+      pairSubmit.textContent = t.pairSubmit
+    }
+
+    // Через url(): со страницы по постоянному адресу привязка тоже
+    // должна уходить на компьютер, а не на хостинг.
+    withTimeout(url('/pair'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code: code })
+    }, PAIR_TIMEOUT)
+      .then(function (r) {
+        // Тело читаем всегда: и «осталось попыток», и имя устройства
+        // приходят в нём. Мусор вместо json не должен ронять ветку.
+        return r.json().catch(function () { return {} })
+          .then(function (data) { return { status: r.status, ok: r.ok, data: data } })
+      })
+      .then(function (res) {
+        done()
+        if (res.ok) {
+          // Со страницы по постоянному адресу cookie к нам не вернётся —
+          // для браузера компьютер это чужой сайт. Токен из ответа
+          // сохраняем сами и дальше шлём заголовком.
+          if (res.data && res.data.token) {
+            token = res.data.token
+            try { localStorage.setItem(TOKEN_KEY, token) } catch (e) { /* приватное окно */ }
+          }
+          pairCode.blur()
+          hidePair()
+          flash(t.paired)
+          poll()
+          return
+        }
+        if (res.status === 429) { pairError.textContent = t.pairBurned; return }
+        if (res.status === 403) {
+          var left = res.data && res.data.left
+          pairError.textContent = t.pairBad +
+            (typeof left === 'number' && left > 0 ? t.pairLeft + left : '')
+          pairCode.value = ''
+          pairCode.focus()
+          return
+        }
+        pairError.textContent = t.pairFail
+      })
+      // Сюда приходит и таймаут: спящий Мак не должен оставить кнопку
+      // навсегда в состоянии «проверяю…».
+      .catch(function () { done(); pairError.textContent = t.pairOffline })
+  })
+
+  // Подсказка про постоянный адрес. Имени компьютера странице взять
+  // неоткуда — в контракте такого поля нет, поэтому формулировка общая,
+  // без готовой ссылки. Показываем только на iOS и только если открыто
+  // не по .local: в остальных случаях подсказывать нечего.
+  var iOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+            (navigator.maxTouchPoints > 1 && /Mac/.test(navigator.userAgent))
+  var host = location.hostname.toLowerCase()
+  if (iOS && !/\.local$/.test(host) && host !== 'localhost') {
+    var tip = document.getElementById('tip')
+    tip.textContent = t.tip
+    tip.hidden = false
+  }
+
+  // --- Просмотр картинки -------------------------------------------------
+  // Копирования тут нет и быть не может: ClipboardItem работает только в
+  // защищённом контексте. Открываем крупно, дальше человек делает долгое
+  // нажатие и берёт системное меню Safari.
+  var background = [header, mainEl, composer]
+  var returnFocus = null
+
+  // Класть картинку в буфер умеет только защищённый адрес: и Clipboard
+  // API, и сам тип ClipboardItem по обычному http браузером не даются.
+  // На старой дороге кнопки просто нет, а долгое нажатие работает как
+  // работало.
+  var canCopyImage = window.isSecureContext &&
+                     !!(window.ClipboardItem && navigator.clipboard && navigator.clipboard.write)
+  var viewerId = null
+  viewerCopy.textContent = t.copyImage
+
+  // Safari принимает в буфер только png, а ClipboardItem обязан родиться
+  // прямо в обработчике нажатия — иначе привязка к жесту теряется и
+  // запись запрещается. Поэтому внутрь кладём обещание, а не готовый файл.
+  function pngBlob(blob) {
+    if (blob.type === 'image/png') return Promise.resolve(blob)
+    return new Promise(function (resolve, reject) {
+      var src = URL.createObjectURL(blob)
+      var img = new Image()
+      img.onload = function () {
+        URL.revokeObjectURL(src)
+        var canvas = document.createElement('canvas')
+        var scale = Math.min(1, MAX_CANVAS_SIDE / Math.max(img.width, img.height))
+        canvas.width = Math.max(1, Math.round(img.width * scale))
+        canvas.height = Math.max(1, Math.round(img.height * scale))
+        canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height)
+        canvas.toBlob(function (out) {
+          out ? resolve(out) : reject(new Error('encode'))
+        }, 'image/png')
+      }
+      img.onerror = function () { URL.revokeObjectURL(src); reject(new Error('decode')) }
+      img.src = src
+    })
+  }
+
+  viewerCopy.addEventListener('click', function () {
+    if (!viewerId) return
+    var target = url('/file/' + encodeURIComponent(viewerId))
+    var picture = fetch(target)
+      .then(function (r) {
+        if (!r.ok) throw new Error('http ' + r.status)
+        return r.blob()
+      })
+      .then(pngBlob)
+    var item
+    try {
+      item = new ClipboardItem({ 'image/png': picture })
+    } catch (e) {
+      flash(t.imgFailed)
+      return
+    }
+    navigator.clipboard.write([item]).then(
+      function () { flash(t.imgCopied) },
+      function () { flash(t.imgFailed) }
+    )
+  })
+
+  function openViewer(id, name) {
+    viewerId = id
+    viewerCopy.hidden = !canCopyImage
+    viewerImg.src = url('/file/' + encodeURIComponent(id))
+    viewerImg.alt = name || t.image
+    viewerImg.style.transform = ''
+    viewer.classList.add('on')
+    returnFocus = document.activeElement
+    // Сначала уводим фокус в диалог, только потом прячем фон от VoiceOver:
+    // aria-hidden на предке сфокусированного элемента ломает чтение.
+    viewerClose.focus()
+    background.forEach(function (el) {
+      el.setAttribute('aria-hidden', 'true')
+      el.inert = true
+    })
+  }
+  function closeViewer() {
+    viewerId = null
+    viewer.classList.remove('on')
+    viewerImg.removeAttribute('src')
+    background.forEach(function (el) {
+      el.removeAttribute('aria-hidden')
+      el.inert = false
+    })
+    if (returnFocus && returnFocus.focus) returnFocus.focus()
+    returnFocus = null
+  }
+  // Элемент мог вытеснить лимит истории между отрисовкой и тапом — тогда
+  // сервер отвечает 404 и в просмотре висела бы битая картинка.
+  viewerImg.addEventListener('error', function () {
+    if (!viewer.classList.contains('on')) return
+    closeViewer()
+    flash(t.gone)
+  })
+  viewerClose.addEventListener('click', closeViewer)
+  viewer.addEventListener('click', function (e) {
+    if (e.target === viewer) closeViewer()
+  })
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && viewer.classList.contains('on')) closeViewer()
+  })
+
+  // Свайп вниз закрывает. Начинаем только с самой картинки, чтобы не
+  // мешать долгому нажатию — оно палец не двигает.
+  var dragY = null
+  viewerImg.addEventListener('touchstart', function (e) {
+    dragY = e.touches[0].clientY
+  }, { passive: true })
+  viewerImg.addEventListener('touchmove', function (e) {
+    if (dragY === null) return
+    var dy = e.touches[0].clientY - dragY
+    if (dy > 0) viewerImg.style.transform = 'translateY(' + dy + 'px)'
+  }, { passive: true })
+  viewerImg.addEventListener('touchend', function (e) {
+    if (dragY === null) return
+    var dy = (e.changedTouches[0].clientY - dragY)
+    dragY = null
+    if (dy > 80) closeViewer()
+    viewerImg.style.transform = ''
+  })
+
+  // --- Отправка на компьютер --------------------------------------------
+  var sending = false
+  var sendStarted = 0
+
+  // Сторож против намертво поднятого флага.
+  //
+  // iOS замораживает страницу, как только человек уходит в другое
+  // приложение, — а уходит он ровно за тем, чтобы что-то скопировать.
+  // Запрос, застигнутый заморозкой, может не завершиться никогда: ни
+  // ответа, ни отказа, ни срабатывания таймаута. Флаг «идёт отправка»
+  // остаётся поднятым, и всё дальнейшее молча проваливается в никуда —
+  // ни строки в списке, ни ошибки, ни намёка.
+  //
+  // Поэтому флаг считается действительным только пока не истёк его срок.
+  // Просроченный снимаем и работаем дальше.
+  function stuck(started, patience) {
+    return Date.now() - started > patience + 5000
+  }
+
+  // `queued` — тот же текст ещё раз: если отправка не дошла, его надо
+  // положить в очередь, а `body` к тому моменту уже может быть чем угодно.
+  // Картинки не копим: они большие, а место в телефоне не наше.
+  function post(body, type, name, queued) {
+    if (sending && !stuck(sendStarted, SEND_TIMEOUT)) return Promise.resolve()
+    sending = true
+    sendStarted = Date.now()
+    sendBtn.disabled = true
+    pickBtn.disabled = true
+
+    var headers = { 'Content-Type': type }
+    if (name) headers['X-Karman-Name'] = encodeURIComponent(name)
+    flash(t.sending, true)
+
+    function finish(message) {
+      sending = false
+      sendBtn.disabled = false
+      pickBtn.disabled = false
+      flash(message)
+    }
+
+    // Тексту тридцать секунд ни к чему: он короткий, и если компьютер
+    // только что пропал, полминуты «Отправляется…» выглядят как зависание.
+    // Картинке столько нужно — она едет по Wi-Fi мегабайтами.
+    var patience = queued ? 8000 : SEND_TIMEOUT
+    return withTimeout(url('/add'), { method: 'POST', headers: headers, body: body }, patience)
+      .then(function (r) {
+        if (r.ok) { finish(t.sent); poll(); return }
+        if (r.status === 401) { showPair(); finish(t.sendFail); return }
+        if (r.status === 403) { setNotice(t.unpaired); finish(t.sendFail); return }
+        if (r.status === 413) { finish(t.tooLarge); return }
+        if (r.status === 400) { finish(t.badImage); return }
+        finish(t.sendFail)
+      })
+      // Сюда же приходит срабатывание таймаута — липкий тост «Отправляется…»
+      // гаснет во всех путях, а не висит вечно на уснувшем Маке.
+      .catch(function () {
+        if (queued) {
+          // Сначала помечаем компьютер недоступным, потом кладём в список:
+          // remember рисует заново только в этом состоянии, иначе строка
+          // ушла бы в память молча и на экране не появилось бы ничего.
+          // Ровно это и происходило: очередь копилась, а человек видел
+          // пустоту и не понимал, приняли у него текст или потеряли.
+          reachable = false
+          remember(queued)
+          enqueue(queued)
+          finish(t.queued)
+          return
+        }
+        finish(t.sendFail)
+      })
+  }
+
+  // Взять то, что скопировано на самом телефоне.
+  //
+  // Автоматически этого не будет никогда: iOS даёт читать буфер только
+  // пока страница открыта и только в ответ на нажатие. Поэтому кнопка, а
+  // не слежение. Зато Мак тут не нужен вовсе — строка ложится в память
+  // телефона сразу, а на компьютер уезжает, когда он найдётся.
+  grabBtn.hidden = !modern || !(navigator.clipboard && navigator.clipboard.readText)
+
+  // Своя запись выглядит как обычная строка списка. Пометка в
+  // идентификаторе нужна, чтобы не спутать её с пришедшей от Мака, когда
+  // тот вернётся и пришлёт свою версию той же строки.
+  function remember(text) {
+    var rows = readStore(CACHE_KEY)
+    rows.unshift({
+      kind: 'text',
+      id: 'phone-' + new Date().getTime(),
+      // Секунды от начала эпохи — тот же вид, что присылает Мак: список
+      // рисуется одним кодом, и разнобой в датах сломал бы «только что».
+      date: Date.now() / 1000,
+      text: text.slice(0, CACHE_TEXT_MAX)
+    })
+    writeStore(CACHE_KEY, rows.slice(0, CACHE_MAX))
+    // Живой список принадлежит Маку — туда не вмешиваемся, там своя
+    // правда, и следующий же опрос всё равно её перерисует.
+    if (!reachable) {
+      lastSignature = null
+      render(readStore(CACHE_KEY))
+    }
+  }
+
+  grabBtn.addEventListener('click', function () {
+    navigator.clipboard.readText().then(function (text) {
+      if (!text || !text.trim()) { flash(t.grabEmpty); return }
+      // Пока компьютер отвечает — просто отправляем: строка вернётся из
+      // его истории следующим же опросом. Записывать её ещё и себе значило
+      // бы показать её дважды.
+      if (reachable) {
+        post(text, 'text/plain; charset=utf-8', null, text)
+        return
+      }
+      remember(text)
+      enqueue(text)
+      flash(t.grabbed)
+      setNotice(t.cached + ' ' + t.queueWait + loadQueue().length, true)
+    }, function () { flash(t.grabFail) })
+  })
+
+  function sendText() {
+    var text = input.value
+    if (!text.trim()) return
+    input.value = ''
+    input.style.height = ''
+    measureComposer()
+
+    // Компьютер уже известно что не отвечает — не заставляем человека
+    // ждать полминуты ради предсказуемого отказа.
+    if (!reachable) {
+      remember(text)
+      enqueue(text)
+      flash(t.queued)
+      setNotice(t.cached + ' ' + t.queueWait + loadQueue().length, true)
+      return
+    }
+
+    post(text, 'text/plain; charset=utf-8', null, text)
+  }
+  sendBtn.addEventListener('click', sendText)
+  input.addEventListener('input', function () {
+    input.style.height = 'auto'
+    input.style.height = Math.min(input.scrollHeight, 120) + 'px'
+    measureComposer()
+  })
+
+  pickBtn.addEventListener('click', function () { pick.click() })
+  pick.addEventListener('change', function () {
+    var file = pick.files && pick.files[0]
+    pick.value = ''
+    if (!file) return
+    // Проверяем размер до отправки: на 413 Safari иногда отдаёт ошибку
+    // записи вместо ответа сервера, и причина остаётся непонятной.
+    if (file.size > MAX_UPLOAD) { flash(t.tooLarge); return }
+    if (file.type === 'image/png' || file.type === 'image/jpeg') {
+      post(file, file.type, safeName(file.name))
+      return
+    }
+    // Всё остальное (HEIC и прочее с камеры) перегоняем в jpeg через canvas:
+    // контракт принимает только png и jpeg.
+    var stem = safeName(file.name).replace(/\.[^.]+$/, '') || t.fallbackName
+    toJpeg(file).then(function (blob) {
+      if (blob.size > MAX_UPLOAD) { flash(t.tooLarge); return }
+      post(blob, 'image/jpeg', stem + '.jpg')
+    }, function () { flash(t.badImage) })
+  })
+
+  function safeName(name) {
+    return (name || '').trim() || t.fallbackName
+  }
+
+  function toJpeg(file) {
+    return new Promise(function (resolve, reject) {
+      var src = URL.createObjectURL(file)
+      var img = new Image()
+      img.onload = function () {
+        // iOS ограничивает площадь canvas примерно 16.7 млн пикселей:
+        // снимок с 48-мегапиксельной камеры в натуральном размере даёт
+        // пустой холст, и на Мак молча уезжает чёрный прямоугольник.
+        var w = img.naturalWidth
+        var h = img.naturalHeight
+        var scale = Math.min(1, MAX_CANVAS_SIDE / Math.max(w, h))
+        var canvas = document.createElement('canvas')
+        canvas.width = Math.max(1, Math.round(w * scale))
+        canvas.height = Math.max(1, Math.round(h * scale))
+        canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height)
+        URL.revokeObjectURL(src)
+        canvas.toBlob(function (blob) {
+          blob ? resolve(blob) : reject(new Error('encode'))
+        }, 'image/jpeg', .9)
+      }
+      img.onerror = function () { URL.revokeObjectURL(src); reject(new Error('decode')) }
+      img.src = src
+    })
+  }
+
+  // --- Список ------------------------------------------------------------
+  // Перерисовываем только когда состав изменился: иначе опрос каждые две
+  // секунды сбрасывал бы подсветку нажатой строки и рвал выделение.
+  var lastSignature = null
+  // Узлы с относительным временем держим отдельно: список не зависит от
+  // времени, поэтому без этого прохода строки вечно врали бы «только что».
+  var timeNodes = []
+
+  function refreshTimes() {
+    timeNodes.forEach(function (item) {
+      item.node.textContent = ago(item.date)
+    })
+  }
+
+  // --- Память страницы ---------------------------------------------------
+  // Всё чтение и запись обёрнуты: в приватном окне Safari localStorage
+  // бросает на любой записи, и незакрытое исключение уронило бы опрос.
+
+  function readStore(name) {
+    try {
+      var raw = localStorage.getItem(name)
+      var parsed = raw ? JSON.parse(raw) : []
+      return Object.prototype.toString.call(parsed) === '[object Array]' ? parsed : []
+    } catch (e) { return [] }
+  }
+
+  function writeStore(name, value) {
+    try { localStorage.setItem(name, JSON.stringify(value)) } catch (e) { /* нет места — не беда */ }
+  }
+
+  // Храним заголовки, а не содержимое: картинки лежат отдельно, в кэше
+  // оболочки, а длинный текст режем — иначе одна вставленная простыня
+  // выбирает всё место и вытесняет остальную историю.
+  function saveCache(rows) {
+    writeStore(CACHE_KEY, rows.slice(0, CACHE_MAX).map(function (row) {
+      if (row.kind === 'image') {
+        return { kind: 'image', id: row.id, date: row.date, name: row.name, size: row.size }
+      }
+      return {
+        kind: 'text', id: row.id, date: row.date,
+        text: String(row.text == null ? '' : row.text).slice(0, CACHE_TEXT_MAX)
+      }
+    }))
+  }
+
+  function loadQueue() { return readStore(QUEUE_KEY) }
+
+  function enqueue(text) {
+    var queue = loadQueue()
+    queue.push(text)
+    // Потолок с конца: если компьютера нет неделю, старое накопленное
+    // человеку уже не нужно, а место нужно.
+    if (queue.length > QUEUE_MAX) queue = queue.slice(queue.length - QUEUE_MAX)
+    writeStore(QUEUE_KEY, queue)
+  }
+
+  // Отправляем по одному и строго по очереди: параллельная отправка
+  // перемешала бы порядок, а на компьютере он и есть история.
+  var flushing = false
+  var flushStarted = 0
+
+  function flushQueue() {
+    if (flushing && !stuck(flushStarted, SEND_TIMEOUT)) return
+    if (sending && !stuck(sendStarted, SEND_TIMEOUT)) return
+    var queue = loadQueue()
+    if (!queue.length) return
+    flushing = true
+    flushStarted = Date.now()
+
+    withTimeout(url('/add'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+      body: queue[0]
+    }, SEND_TIMEOUT)
+      .then(function (response) {
+        flushing = false
+        // Не «ок» — оставляем на месте. Отвязали телефон или упёрлись в
+        // размер: молча выбрасывать написанное человеком нельзя.
+        if (!response.ok) return
+        var rest = loadQueue().slice(1)
+        writeStore(QUEUE_KEY, rest)
+        if (rest.length) { flushQueue(); return }
+        flash(t.queueSent)
+        poll()
+      })
+      .catch(function () { flushing = false })
+  }
+
+  function render(rows) {
+    var signature = rows.map(function (r) { return r.kind + ':' + r.id }).join(',')
+    if (signature === lastSignature) return
+    lastSignature = signature
+
+    list.textContent = ''
+    timeNodes = []
+    if (!rows.length) {
+      var empty = document.createElement('p')
+      empty.className = 'empty'
+      empty.textContent = t.empty
+      list.appendChild(empty)
+      return
+    }
+
+    rows.forEach(function (row) {
+      var button = document.createElement('button')
+      button.className = 'row'
+      button.type = 'button'
+
+      var body = document.createElement('div')
+      body.className = 'body'
+
+      // span, а не p: <p> внутри <button> — невалидная модель содержимого,
+      // VoiceOver читает такую кнопку странно.
+      var meta = document.createElement('span')
+      meta.className = 'meta'
+      var timeSpan = document.createElement('span')
+      timeSpan.textContent = ago(row.date)
+      meta.appendChild(timeSpan)
+      timeNodes.push({ node: timeSpan, date: row.date })
+
+      if (row.kind === 'image') {
+        var thumb = document.createElement('img')
+        thumb.className = 'thumb'
+        thumb.loading = 'lazy'
+        thumb.decoding = 'async'
+        thumb.alt = ''
+        thumb.src = url('/thumb/' + encodeURIComponent(row.id))
+        button.appendChild(thumb)
+
+        var name = document.createElement('span')
+        name.className = 'name'
+        // textContent, не innerHTML: имя файла приходит извне.
+        name.textContent = row.name || t.image
+        body.appendChild(name)
+
+        var s = size(row.size)
+        if (s) meta.appendChild(document.createTextNode(' · ' + s))
+        body.appendChild(meta)
+
+        button.addEventListener('click', function () {
+          openViewer(row.id, row.name)
+        })
+      } else {
+        var text = document.createElement('span')
+        text.className = 'text'
+        // Тут может оказаться что угодно, включая разметку.
+        text.textContent = row.text
+        body.appendChild(text)
+        body.appendChild(meta)
+
+        button.addEventListener('click', function () {
+          copy(row.text)
+          button.classList.add('copied')
+          setTimeout(function () { button.classList.remove('copied') }, 200)
+        })
+      }
+
+      button.appendChild(body)
+      list.appendChild(button)
+    })
+  }
+
+  // Опрос: не больше одного запроса в полёте и жёсткий таймаут. Иначе на
+  // уснувшем Маке запросы копятся, iOS упирается в лимит соединений на
+  // хост (превью перестают грузиться), а ответы приходят вразнобой и
+  // могут отрисовать устаревший список.
+  var polling = false
+  var pollStarted = 0
+  var pollPromise = null
+  // Отвечает ли компьютер. Нужен, чтобы отправка не ждала таймаута там,
+  // где ответ заранее известен, а сразу ложилась в очередь.
+  var reachable = true
+
+  function poll() {
+    // Страница по постоянному адресу без единого знакомого компьютера:
+    // стучаться некуда, и запрос ушёл бы на сам хостинг. Показываем, что
+    // делать, вместо молчания.
+    if (!selfServed && !base) {
+      reachable = false
+      var known = readStore(CACHE_KEY)
+      if (known.length) render(known)
+      setNotice(t.noMac)
+      return Promise.resolve()
+    }
+
+    // Возвращаем текущий запрос, а не пустышку: кнопка повтора ждёт его
+    // честно, а не гаснет мгновенно, когда опрос уже был в полёте.
+    // Застрявший после заморозки опрос не в счёт — иначе он навсегда
+    // запер бы обновление списка.
+    if (polling && !stuck(pollStarted, POLL_TIMEOUT)) return pollPromise
+    polling = true
+    pollStarted = Date.now()
+    // no-cache, а не no-store: no-store вообще не заглядывает в кэш и не
+    // шлёт If-None-Match, поэтому сервер никогда не смог бы ответить 304 и
+    // список тянулся бы целиком каждые две секунды. no-cache заставляет
+    // сверяться с сервером, но условным запросом.
+    pollPromise = withTimeout(url('/items'), { cache: 'no-cache' }, POLL_TIMEOUT)
+      .then(function (response) {
+        // 401 — телефон не привязан или привязку сняли с компьютера.
+        if (response.status === 401) {
+          lastSignature = null
+          render([])
+          showPair()
+          return null
+        }
+        if (response.status === 403) {
+          setNotice(t.unpaired)
+          lastSignature = null
+          render([])
+          return null
+        }
+        if (!response.ok) {
+          var err = new Error('http ' + response.status)
+          err.serverSide = true
+          throw err
+        }
+        return response.json().catch(function () {
+          var bad = new Error('parse')
+          bad.serverSide = true
+          throw bad
+        })
+      })
+      .then(function (data) {
+        if (!data) return
+        reachable = true
+        hidePair()
+        setNotice('')
+        var rows = data.items || []
+        render(rows)
+        saveCache(rows)
+        // Компьютер на месте — самое время отдать накопленное.
+        flushQueue()
+      })
+      .catch(function (e) {
+        // Ответ сервера с ошибкой и мусором в теле — это не «нет связи»:
+        // связь как раз есть, чинить надо Karman на Маке.
+        // А если компьютер выключен с самого начала, страница не загрузится
+        // вовсе и человек увидит стандартную ошибку Safari — сохранить её
+        // заранее нечем, service worker тоже требует https.
+        // На экране привязки полоса «нет связи» только мешает: там уже
+        // есть своя строка ошибки под кнопкой.
+        if (!pairBox.hidden) return
+
+        if (e && e.serverSide) {
+          reachable = true
+          setNotice(t.serverErr, true)
+          return
+        }
+
+        // Компьютера нет. Раньше на этом всё и кончалось: пустой экран и
+        // полоса «нет связи». Теперь показываем, что телефон запомнил, —
+        // копировать оттуда можно так же, как из живого списка.
+        reachable = false
+        // Компьютер мог переехать в другую сеть и оказаться на другом из
+        // знакомых адресов. Ищем заново, прежде чем объявлять его мёртвым.
+        searchAgainIfStale()
+        var cached = readStore(CACHE_KEY)
+        if (cached.length) render(cached)
+        var waiting = loadQueue().length
+        setNotice((cached.length ? t.cached : t.offline)
+                  + (waiting ? ' ' + t.queueWait + waiting : ''), true)
+      })
+      .then(function () { polling = false })
+    return pollPromise
+  }
+
+  // Оболочка страницы в телефоне. Только на защищённом адресе: по
+  // обычному http браузер регистрировать её отказывается, и это не наша
+  // ошибка, а условие. Отказ глотаем молча — страница работает и без неё,
+  // просто не открывается при выключенном компьютере.
+  if ('serviceWorker' in navigator && window.isSecureContext) {
+    navigator.serviceWorker.register('sw.js').catch(function () {})
+
+    // iOS не перезагружает страницу при возврате к иконке — она просто
+    // просыпается той же, какой была. Поэтому при каждом возвращении
+    // просим оболочку сверить себя с сетью: свежая версия доедет к
+    // следующему открытию, а не через неделю.
+    document.addEventListener('visibilitychange', function () {
+      if (document.hidden) return
+      navigator.serviceWorker.getRegistration()
+        .then(function (reg) { if (reg) reg.update() })
+        .catch(function () {})
+    })
+  }
+
+  measureComposer()
+  window.addEventListener('resize', measureComposer)
+  window.addEventListener('orientationchange', measureComposer)
+
+  // --- Поиск компьютера --------------------------------------------------
+  //
+  // Только для страницы по постоянному адресу: когда её отдаёт сам
+  // компьютер, искать нечего.
+  var FIND_TIMEOUT = 4000
+  var lastSearch = 0
+
+  function findMac() {
+    var hosts = knownHosts()
+    if (!hosts.length) return Promise.resolve(false)
+    lastSearch = Date.now()
+
+    // Стучимся во все адреса разом, а не по очереди: очередь означала бы
+    // ожидание таймаута на каждом мёртвом адресе, и открытие страницы в
+    // новой сети занимало бы десятки секунд.
+    return new Promise(function (resolve) {
+      var left = hosts.length
+      var found = false
+      hosts.forEach(function (host) {
+        withTimeout(host + '/items', { cache: 'no-store' }, FIND_TIMEOUT)
+          .then(function (response) {
+            // 401 и 403 — тоже «компьютер тут»: он ответил, просто этот
+            // телефон ему пока чужой. Для поиска это удача, а не отказ.
+            var alive = response.status === 200 ||
+                        response.status === 401 ||
+                        response.status === 403
+            if (alive && !found) {
+              found = true
+              base = host
+              rememberHost(host)
+              resolve(true)
+            }
+          })
+          .catch(function () { /* этот адрес мёртв, ждём остальных */ })
+          .then(function () {
+            left -= 1
+            if (left === 0 && !found) resolve(false)
+          })
+      })
+    })
+  }
+
+  // Компьютер мог переехать на другой из знакомых адресов. Перебираем их
+  // заново, но не чаще раза в пятнадцать секунд: опрос идёт каждые две, и
+  // без этого мы бы дёргали всю сеть без передышки.
+  function searchAgainIfStale() {
+    if (selfServed || Date.now() - lastSearch < 15000) return
+    findMac().then(function (ok) { if (ok) poll() })
+  }
+
+  // --- Запуск ------------------------------------------------------------
+
+  if (!selfServed) {
+    token = (function () {
+      try { return localStorage.getItem(TOKEN_KEY) || '' } catch (e) { return '' }
+    })()
+
+    // Адрес компьютера приезжает в ссылке из QR-кода — в той её части,
+    // что остаётся в браузере и на сервер не уходит.
+    var fromLink = /(?:^|[#&])a=([^&]*)/.exec(location.hash)
+    if (fromLink) {
+      var pieces = decodeURIComponent(fromLink[1]).split(':')
+      var origin = originFor(pieces[0], pieces[1])
+      if (origin) rememberHost(origin)
+      // Адрес из ссылки НЕ убираем, хотя соблазн был.
+      //
+      // Сканер открывает ссылку в своём окошке, а «Добавить на экран
+      // Домой» есть только в Safari — и переход туда несёт с собой ровно
+      // ту ссылку, что видна. Вычищенная означала бы, что в Safari
+      // страница про компьютер уже не знает: память у окошка сканера своя,
+      // и до Safari она не доезжает. Человек видит «компьютер не знаком»
+      // там, где только что вводил код.
+      //
+      // Вреда от адреса в ссылке нет: он всего лишь ещё один кандидат в
+      // списке знакомых, и устаревший просто не ответит.
+    }
+    base = knownHosts()[0] || ''
+  }
+
+  if (selfServed) {
+    poll()
+  } else {
+    // Пока ищем — показываем то, что телефон помнит: пустой экран на
+    // секунду выглядит как поломка.
+    var remembered = readStore(CACHE_KEY)
+    if (remembered.length) render(remembered)
+    findMac().then(function () { poll() })
+  }
+  setInterval(poll, 2000)
+  setInterval(refreshTimes, 30000)
+  // Вернулись с вкладки вставки — показываем свежее сразу, не дожидаясь
+  // следующего опроса.
+  document.addEventListener('visibilitychange', function () {
+    if (!document.hidden) { refreshTimes(); poll() }
+  })
+})()
+</script>
+</html>

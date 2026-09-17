@@ -644,6 +644,8 @@
     grabbed:   ru ? 'Записано'                      : 'Saved',
     grabEmpty: ru ? 'В буфере телефона пусто'       : 'This phone’s clipboard is empty',
     grabFail:  ru ? 'Не удалось прочитать буфер'    : 'Couldn’t read the clipboard',
+    grabHint:  ru ? 'Скопировали что-то? Коснитесь пустого места — и «Вставить»'
+                  : 'Copied something? Tap an empty spot, then Paste',
     imgCopied: ru ? 'Картинка скопирована'           : 'Image copied',
     imgFailed: ru ? 'Не удалось скопировать картинку' : 'Couldn’t copy the image',
     offline:   ru ? 'Нет связи с компьютером. Проверьте, включён ли он и та же ли сеть Wi-Fi.'
@@ -830,7 +832,7 @@
   var CACHE_TEXT_MAX = 20000 // и столько знаков в каждой
   var QUEUE_MAX = 50
 
-  var BUILD = 'сборка 28.08 15:02'
+  var BUILD = 'сборка 16.09 23:40'
 
   var MAX_UPLOAD = 25 * 1024 * 1024   // потолок сервера
   var MAX_CANVAS_SIDE = 4096          // iOS роняет canvas примерно после 16.7 Мп
@@ -948,6 +950,8 @@
                !!(navigator.clipboard && navigator.clipboard.writeText)
 
   function copy(text) {
+    // Своё же копирование не должно уехать обратно на компьютер.
+    noteClip(text)
     if (modern) {
       // В ветке отказа копировать уже нечем: привязка к жесту потеряна,
       // execCommand откажет тоже. Честнее показать неудачу.
@@ -1320,10 +1324,10 @@
 
   // Взять то, что скопировано на самом телефоне.
   //
-  // Автоматически этого не будет никогда: iOS даёт читать буфер только
-  // пока страница открыта и только в ответ на нажатие. Поэтому кнопка, а
-  // не слежение. Зато Мак тут не нужен вовсе — строка ложится в память
-  // телефона сразу, а на компьютер уезжает, когда он найдётся.
+  // Слежения в фоне не будет никогда: буфер читается только пока страница
+  // открыта. Поэтому кнопка, а сверху — подхват при возвращении на
+  // страницу (см. autoGrab ниже). Мак тут не нужен вовсе — строка ложится
+  // в память телефона сразу, а на компьютер уезжает, когда он найдётся.
   grabBtn.hidden = !modern || !(navigator.clipboard && navigator.clipboard.readText)
 
   // Своя запись выглядит как обычная строка списка. Пометка в
@@ -1348,22 +1352,97 @@
     }
   }
 
+  function takeText(text) {
+    // Пока компьютер отвечает — просто отправляем: строка вернётся из
+    // его истории следующим же опросом. Записывать её ещё и себе значило
+    // бы показать её дважды.
+    if (reachable) {
+      post(text, 'text/plain; charset=utf-8', null, text)
+      return
+    }
+    remember(text)
+    enqueue(text)
+    flash(t.grabbed)
+    setNotice(t.cached + ' ' + t.queueWait + loadQueue().length, true)
+  }
+
   grabBtn.addEventListener('click', function () {
     navigator.clipboard.readText().then(function (text) {
       if (!text || !text.trim()) { flash(t.grabEmpty); return }
-      // Пока компьютер отвечает — просто отправляем: строка вернётся из
-      // его истории следующим же опросом. Записывать её ещё и себе значило
-      // бы показать её дважды.
-      if (reachable) {
-        post(text, 'text/plain; charset=utf-8', null, text)
-        return
-      }
-      remember(text)
-      enqueue(text)
-      flash(t.grabbed)
-      setNotice(t.cached + ' ' + t.queueWait + loadQueue().length, true)
+      noteClip(text)
+      takeText(text)
     }, function () { flash(t.grabFail) })
   })
+
+  // --- Подхват буфера при возвращении на страницу -------------------------
+  //
+  // Скопировали в другом приложении, вернулись сюда — строка уезжает на
+  // компьютер сама. Android (Chrome) после одного разрешения читает буфер
+  // молча. Safari без нажатия читать не даёт вовсе: там чтение ждёт первого
+  // касания страницы, и iOS показывает над пальцем кнопку «Вставить».
+  //
+  // Отправляем только НОВОЕ. Запоминаем, что уже видели, иначе каждое
+  // возвращение слало бы одно и то же. Самый первый запуск только
+  // запоминает: в буфере может лежать давний пароль, и отправлять его на
+  // компьютер никто не просил. И не отправляем то, что уже есть в списке:
+  // скопированное отсюда же вернулось бы на компьютер дублем.
+  var CLIP_KEY = 'karman.lastClip'
+  var autoArmed = false
+  var autoBusy = false
+
+  function seenClip() {
+    try { return localStorage.getItem(CLIP_KEY) } catch (e) { return '' }
+  }
+  function noteClip(text) {
+    try { localStorage.setItem(CLIP_KEY, text) } catch (e) { /* не беда */ }
+  }
+
+  function considerClip(text) {
+    if (!text || !text.trim()) return
+    var seen = seenClip()
+    if (text === seen) return
+    noteClip(text)
+    // null — ключа ещё не было: это первый запуск, только запоминаем.
+    if (seen === null) return
+    var known = readStore(CACHE_KEY).some(function (r) { return r.kind === 'text' && r.text === text })
+    if (known) return
+    takeText(text)
+  }
+
+  function autoGrab() {
+    if (grabBtn.hidden || document.hidden || autoBusy || !pairBox.hidden) return
+    autoBusy = true
+    navigator.clipboard.readText().then(function (text) {
+      autoBusy = false
+      considerClip(text)
+    }, function () {
+      // Отказ без нажатия — это Safari. Ждём касания.
+      autoBusy = false
+      if (!autoArmed) flash(t.grabHint)
+      autoArmed = true
+    })
+  }
+
+  function onTouch(e) {
+    if (!autoArmed) return
+    // Касание строки — это копирование С компьютера, «Вставить» поверх него
+    // только мешает. Ждём касания пустого места.
+    if (e.target.closest && e.target.closest('button, a, input, textarea, label, li, #list > *')) return
+    autoArmed = false
+    toast.classList.remove('on')
+    navigator.clipboard.readText().then(considerClip, function () {})
+  }
+
+  if (!grabBtn.hidden) {
+    document.addEventListener('touchend', onTouch, true)
+    document.addEventListener('click', onTouch, true)
+    document.addEventListener('visibilitychange', function () {
+      if (document.hidden) { autoArmed = false; return }
+      autoGrab()
+    })
+    window.addEventListener('focus', autoGrab)
+    setTimeout(autoGrab, 300)
+  }
 
   function sendText() {
     var text = input.value

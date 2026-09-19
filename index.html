@@ -806,6 +806,11 @@
       return /^\d{1,3}$/.test(p) && +p < 256
     })
     if (!fine) return null
+    // Только домашняя сеть. Ссылку с внешним адресом может подсунуть кто
+    // угодно, а страница отправила бы туда токен телефона.
+    var a = +parts[0], b = +parts[1]
+    var lan = a === 10 || (a === 172 && b >= 16 && b < 32) || (a === 192 && b === 168)
+    if (!lan) return null
     var number = parseInt(port, 10)
     if (!(number > 0 && number < 65536)) number = SECURE_PORT
     return 'https://' + parts.join('-') + '.my.local-ip.co:' + number
@@ -832,7 +837,7 @@
   var CACHE_TEXT_MAX = 20000 // и столько знаков в каждой
   var QUEUE_MAX = 50
 
-  var BUILD = 'сборка 16.09 23:40'
+  var BUILD = 'сборка 19.09 20:10'
 
   var MAX_UPLOAD = 25 * 1024 * 1024   // потолок сервера
   var MAX_CANVAS_SIDE = 4096          // iOS роняет canvas примерно после 16.7 Мп

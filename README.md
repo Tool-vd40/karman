@@ -7,7 +7,7 @@
 **Буфер обмена, полка скриншотов и исправление раскладки для Mac.**
 Живёт в строке меню, в Dock не появляется.
 
-[**Скачать Karman 1.3.2**](../../releases/latest) · macOS 13+ · Apple Silicon и Intel · бесплатно
+[**Скачать Karman 1.4.0**](../../releases/latest) · macOS 13+ · Apple Silicon и Intel · бесплатно
 
 <img src="screenshots/panel.png" width="720" alt="Панель истории">
 

@@ -6,6 +6,27 @@
         <description>Обновления Karman</description>
         <language>ru</language>
         <item>
+            <title>1.4.0</title>
+            <pubDate>Sun, 20 Sep 2026 20:06:34 +0900</pubDate>
+            <sparkle:version>1.4.0</sparkle:version>
+            <sparkle:shortVersionString>1.4.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+                <ul>
+                    <li>Панель и настройки перерисованы под облик macOS 26 и 27: вкладки капсулами, строки настроек карточками, поиск без синей рамки.</li>
+                    <li>Выпадающие списки в настройках больше не схлопываются до стрелки с обрезанным текстом.</li>
+                    <li>Картинка с телефона приезжает заметно быстрее: приём больше не копирует накопленное на каждом куске.</li>
+                    <li>Автораскладка бережнее к батарее — проверка поля пароля больше не будит процессор в одиночку.</li>
+                </ul>
+                <p>Система один раз спросит разрешение находить устройства в локальной сети — без него раздача на телефон не заработает.</p>
+            ]]></description>
+            <enclosure
+                url="https://github.com/Tool-vd40/karman/releases/download/1.4.0/Karman.dmg"
+                length="4365562"
+                type="application/octet-stream"
+                sparkle:edSignature="DUTmDDagcDd83+1IYTf+5h5bZLsoj9UF4hro8HH/FeFL7w6zoxaUyzGTVpxbLq+bPo626yD/38z35Rzh0niXCg==" />
+        </item>
+        <item>
             <title>1.3.2</title>
             <pubDate>Sat, 19 Sep 2026 20:05:00 +0900</pubDate>
             <sparkle:version>1.3.2</sparkle:version>

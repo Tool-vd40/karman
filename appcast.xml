@@ -6,6 +6,28 @@
         <description>Обновления Karman</description>
         <language>ru</language>
         <item>
+            <title>1.6.0</title>
+            <pubDate>Fri, 23 Oct 2026 09:08:42 +0900</pubDate>
+            <sparkle:version>1.6.0</sparkle:version>
+            <sparkle:shortVersionString>1.6.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>13.3</sparkle:minimumSystemVersion>
+            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
+            <description><![CDATA[
+                <ul>
+                    <li>Диктовка: держите правый ⌥ и говорите — текст с пунктуацией появится у курсора. Распознавание прямо на Маке, без интернета.</li>
+                    <li>Текст с экрана: ⌘⇧2 и выделить область — текст с картинки или видео уже в буфере.</li>
+                    <li>Конвертер: тащите файл и зажмите Shift — PDF в Word с таблицами и распознаванием сканов, Word в PDF, картинки в JPG и PNG, сжатие и склейка в PDF.</li>
+                    <li>Новые модули включаются в окне «Что включить» — оно откроется один раз после обновления.</li>
+                </ul>
+                <p>Версия только для Маков на Apple Silicon с macOS 13.3 и новее.</p>
+            ]]></description>
+            <enclosure
+                url="https://github.com/Tool-vd40/karman/releases/download/1.6.0/Karman.dmg"
+                length="16428283"
+                type="application/octet-stream"
+                sparkle:edSignature="JpL3M7lOcvzwiymtIEAPq5K8dJzXH1LvxivGItEsstnN8FE1VSWd56pmrtYYc5EtIhQQqIFfyzMIdDUEpryEDw==" />
+        </item>
+        <item>
             <title>1.4.0</title>
             <pubDate>Sun, 20 Sep 2026 20:06:34 +0900</pubDate>
             <sparkle:version>1.4.0</sparkle:version>

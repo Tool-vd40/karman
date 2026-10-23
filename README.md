@@ -4,10 +4,10 @@
 
 # Karman
 
-**Буфер обмена, полка скриншотов и исправление раскладки для Mac.**
+**Буфер обмена, диктовка, конвертер файлов и исправление раскладки для Mac.**
 Живёт в строке меню, в Dock не появляется.
 
-[**Скачать Karman 1.4.0**](../../releases/tag/1.4.0) · macOS 13+ · Apple Silicon и Intel · бесплатно
+[**Скачать Karman 1.6.0**](../../releases/tag/1.6.0) · macOS 13.3+ · Apple Silicon (M1 и новее) · бесплатно
 
 <img src="screenshots/panel.png" width="720" alt="Панель истории">
 
@@ -22,6 +22,14 @@
 **Полка скриншотов.** Снимки экрана попадают в ту же панель. Рабочий стол перестаёт зарастать: включите «Хранить только в Karman», и файл уходит с него сразу.
 
 **Исправление раскладки.** Набрали `ghbdtn` вместо «привет» — двойной `Shift` перепишет как надо. Английские слова внутри фразы Karman оставляет: `yflj crfxfnm Docker` превращается в «надо скачать Docker», а не в кашу.
+
+**Диктовка.** Держите правый `⌥` и говорите — текст с пунктуацией появится у курсора в любом приложении. Распознавание идёт на самом Маке (модель GigaAM, около 320 МБ скачивается при включении), без интернета и без отправки голоса куда-либо. Есть словарь замен, «новая строка» голосом и запись без удержания по двойному касанию `⌥`. По желанию — «Причесать текст»: локальная языковая модель убирает оговорки и повторы (ещё 2,5 ГБ).
+
+**Текст с экрана.** `⌘⇧2`, выделили область — текст с картинки, видео или PDF-скана уже в буфере.
+
+**Конвертер файлов.** Тащите файл и зажмите `Shift` — у курсора появится круг форматов. PDF → Word с таблицами, картинками и распознаванием сканов; Word, RTF, TXT → PDF (с LibreOffice — ещё Pages, Keynote, Numbers); картинки → JPG/PNG, сжатие, склейка в один PDF. Всё на Маке, без сайтов-конвертеров. Для Word → PDF лучше всего, если стоит бесплатный LibreOffice: тогда документ выглядит как в оригинале.
+
+Модули включаются в окне «Что включить» при первом запуске или в настройках.
 
 **История на телефоне.** Наводите камеру на QR-код, и телефон открывает список скопированного в браузере. Ставить на телефон нечего, аккаунта не нужно, данные идут напрямую по вашему Wi-Fi. Работает и на iPhone, и на Android.
 
@@ -41,7 +49,7 @@
 
 ## Установка
 
-1. Скачайте `Karman.dmg` со [страницы релиза 1.4.0](../../releases/tag/1.4.0)
+1. Скачайте `Karman.dmg` со [страницы релиза 1.6.0](../../releases/tag/1.6.0)
 2. Перетащите **Karman** в папку **Программы**
 
 **Первый запуск macOS заблокирует.** Приложение не заверено у Apple: подпись стоит 99 долларов в год, и на бесплатной программе я её не держу.
@@ -61,6 +69,8 @@
 |---|---|---|
 | Accessibility | вставка по щелчку и исправление раскладки | нет, без него `⌘V` вручную |
 | Входящие подключения | раздача истории на телефон | нет, только при включённой раздаче |
+| Микрофон | диктовка | нет, только при включённой диктовке |
+| Запись экрана | текст с экрана | нет, только при включённом модуле |
 
 По двойному Shift Karman берёт только то, что выделено или стоит перед курсором, и только в момент нажатия. Исправление на лету по умолчанию выключено. Если его включить, Karman читает набираемые слова: каждое проверяется по встроенному словарю и сразу забывается, никуда не сохраняется и не отправляется.
 
@@ -98,6 +108,8 @@ Karman is a clipboard manager, screenshot shelf and keyboard-layout fixer for ma
 - Double `Shift` converts text typed in the wrong keyboard layout, leaving real English words alone
 - Point your phone's camera at a QR code to browse the history in its browser, over your own Wi-Fi, with nothing to install
 
-Requires macOS 13 or newer. Free, no account, no telemetry. The app is not notarised, so the first launch needs a right-click → Open (macOS 14 and earlier) or an **Open Anyway** in Privacy & Security (macOS 15 and later).
+Also: offline dictation (hold right `⌥`), text from screen (`⌘⇧2`), and a file converter — drag a file and press `Shift` (PDF → Word, Word → PDF, images).
+
+Requires macOS 13.3 or newer on Apple Silicon. Free, no account, no telemetry. The app is not notarised, so the first launch needs a right-click → Open (macOS 14 and earlier) or an **Open Anyway** in Privacy & Security (macOS 15 and later).
 
 </details>
